@@ -1,5 +1,7 @@
 # WSL2Proxy
 
+[中文文档](README-zh.md)
+
 The repo contains bash scripts to configure your WSL2 environment,
 so to utilize the proxy server running on local Windows for http, https & git
 connections.
