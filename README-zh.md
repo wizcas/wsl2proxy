@@ -30,10 +30,10 @@ WSL2 目前不能够直接通过`localhost`访问本地的 Windows 网络服务�
 
 ```bash
 # 中文版
-wget -O w2p.sh -q https://git.io/JJvv7 && sudo bash w2p.sh install
+wget -O w2p.sh -q https://git.io/JJvfD && sudo bash w2p.sh install
 
 # 英文版
-wget -O w2p.sh -q https://git.io/JJvv5 && sudo bash w2p.sh install
+wget -O w2p.sh -q https://git.io/JJvf1 && sudo bash w2p.sh install
 ```
 
 ### 手动安装

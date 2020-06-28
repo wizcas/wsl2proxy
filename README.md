@@ -37,10 +37,10 @@ You can run this command to download and install the latest script:
 
 ```bash
 # The English Version
-wget -O w2p.sh -q https://git.io/JJvv5 && sudo bash w2p.sh install
+wget -O w2p.sh -q https://git.io/JJvf1 && sudo bash w2p.sh install
 
 # Or the Chinese Version
-wget -O w2p.sh -q https://git.io/JJvv7 && sudo bash w2p.sh install
+wget -O w2p.sh -q https://git.io/JJvfD && sudo bash w2p.sh install
 ```
 
 ### Manually Installation
