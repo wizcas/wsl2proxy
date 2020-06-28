@@ -6,8 +6,8 @@
 # This script is under MIT license
 ##########################################
 
-#----------- 辅助工具 -----------
-####### 颜色码 ########
+#----------- Utils -----------
+####### color code ########
 RED="\033[31m"     # Error message
 GREEN="\033[32m"   # Success message
 YELLOW="\033[33m"  # Warning message
@@ -21,18 +21,19 @@ colorEcho() {
 }
 ##########################
 
-# 一些预定义常量
-conf="${HOME}/.wslproxy.conf"
+# Constants
+VERSION="0.2.0"
+conf="${HOME}/.wsl2proxy.conf"
 socks="${HOME}/socksproxy"
-varsfile="${HOME}/wslproxy.vars"
-cmd="wslproxy"
+varsfile="${HOME}/wsl2proxy.vars"
+cmd="wsl2proxy"
 
-# 从WSL的DNS配置中解析当前Windows主机的访问IP，因为每次重启都会变
+# Extract the IP of Windows host, which is generated automatically
 host=$(cat /etc/resolv.conf | sed -n 's/^nameserver\W\(.*\)$/\1/p')
 
-# 让用户选择代理用什么协议
+# Let user select from options for proxy protocol
 selectProtocol() {
-  echo -e "\n${YELLOW}[STEP 1]${BLUE} 代理协议: ${RAW}\n---- 请选择数字 ----"
+  echo -e "\n${RED}[STEP 1]${BLUE} Proxy Protocol: ${RAW}\n---- OPTIONS ----"
   PROTOCOLS=("http" "https" "socks5" "socks4")
   PS3="-----------------
 Protocol > "
@@ -51,7 +52,7 @@ Protocol > "
       break
       ;;
     *)
-      colorEcho ${RED} "请选择一个从1到${#PROTOCOLS[@]}的数字"
+      colorEcho ${RED} "Please select a number from 1 to ${#PROTOCOLS[@]}."
       ;;
     esac
   done
@@ -59,16 +60,16 @@ Protocol > "
 
 # Let user input the proxy server port
 inputPort() {
-  echo -e "\n${YELLOW}[STEP 2]${BLUE} 代理端口: ${RAW}"
+  echo -e "\n${RED}[STEP 2]${BLUE} Proxy Port: ${RAW}"
   while true; do
     read -p "Port > " port
     if [ -z ${port} ]; then
-      colorEcho ${RED} "你的代理总得有个端口吧？😒"
+      colorEcho ${RED} "You have to let me know the port.${RAW}"
     else
       if [[ ${port} =~ ^[1-9][0-9]+$ ]] && [[ ${port} -le 65535 ]]; then
         break
       else
-        colorEcho ${RED} "无效的端口号"
+        colorEcho ${RED} "Invalid port number.${RAW}"
       fi
     fi
   done
@@ -84,7 +85,7 @@ port=${port}
   " >${conf}
 
   colorEcho ${GREEN} "
-代理配置已成功存储到 ${YELLOW}${conf}${GREEN}, 请不要删除。
+Proxy settings have been saved to ${YELLOW}${conf}${GREEN}, please don't delete it.
 "
 }
 
@@ -94,7 +95,9 @@ checkNc() {
   command -v nc >/dev/null
   nc=$?
   if [ $nc -ne 0 ]; then
-    colorEcho ${RED} "警告: 未找到命令${YELLOW}nc${RED}。SSH代理需要使用该命令，请自行安装。"
+    colorEcho ${RED} "
+WARNING: command ${YELLOW}nc${RED} is not found, which is required for SSH proxy.
+Please install it manually."
   fi
 }
 
@@ -104,19 +107,20 @@ setupSocksProxy() {
 
   echo -e "\
 -------------
-${RED}[需要手动设置]${RAW}
+${RED}[MANUAL OPERATION REQUIRED]${RAW}
 
-已创建网络请求转发脚本${YELLOW}${socks}${RAW}，
-请进行如下配置，以便正常使用SSH代理与git通信：
+The proxy command file ${YELLOW}${socks}${RAW} is created.
+Now to make it into use for the SSH protocol:
 
-1) 新建或编辑文件${YELLOW}~/.ssh/config\e${RAW}，并写入类似下面的内容：
-   (你可能需要首先给该文件可写权限)
+1) Edit or add the ${YELLOW}~/.ssh/config\e${RAW} file 
+   with settings like the following content:
+   (You may need to grant the writing permission first)
 ${TEAL}
 Host github.com
     User git
     ProxyCommand ${socks} '%h %p'
 ${RAW}
-2) 重新给${YELLOW}~/.ssh/config${RAW}文件一个只读权限，以通过SSH安全检查
+2) Give ${YELLOW}~/.ssh/config${RAW} a strict permission for SSH security check
 ${TEAL}
 chmod 400 ~/.ssh/config
 ${RAW}
@@ -135,20 +139,20 @@ nc -x ${host}:${port} -X ${NC_PROTOCOL} \$*
 setup() {
   selectProtocol
   inputPort
-  echo -e "你的代理服务器是: ${TEAL}${protocol}://${host}:${port}${RAW}"
+  echo -e "Your proxy server is: ${TEAL}${protocol}://${host}:${port}${RAW}"
   echo
   while true; do
-    read -p "地址是否正确? (Y/n): " CONFIRMED
+    read -p "Is it correct? (Y/n): " CONFIRMED
     case $CONFIRMED in
     "y" | "Y" | "")
       break
       ;;
     "n" | "N")
-      colorEcho ${BLUE} "👋🏻️ 再见"
+      colorEcho ${BLUE} "Bye."
       exit 2
       ;;
     *)
-      colorEcho ${RED} "啥？"
+      colorEcho ${RED} "What?"
       ;;
     esac
   done
@@ -157,14 +161,14 @@ setup() {
   checkNc
   setupSocksProxy
 
-  colorEcho ${RED} "<<< 随WSL启动自动开启代理 >>>"
-  echo -e "${TEAL}注意: ${RAW}本工具的代理设置会应用到
-${YELLOW}http_proxy, https_proxy${RAW}和${YELLOW}.gitconfig${RAW}上
+  colorEcho ${RED} "<<< AUTO ENABLE >>>"
+  echo -e "${TEAL}Note: ${RAW}Proxy server settings will be applied to 
+${YELLOW}http_proxy, https_proxy${RAW} & ${YELLOW}.gitconfig${RAW}.
 
-若需随WSL启动自动开启代理，请将下面这行代码添加到${YELLOW}$(getProfile)${RAW}中
-(注意不要遗漏命令开头的‘.’)：
+To auto enable the proxy on WSL startup, add the following 
+line into ${YELLOW}$(getProfile)${RAW} (don't miss the leading '.'):
 
-    ${TEAL}. ${cmd} on${RAW}
+    ${TEAL}.${cmd} on${RAW}
 "
 }
 
@@ -172,9 +176,9 @@ ${YELLOW}http_proxy, https_proxy${RAW}和${YELLOW}.gitconfig${RAW}上
 loadConf() {
   if [ ! -f "${conf}" ]; then
     colorEcho ${RED} "
-未找到配置文件${TEAL}${conf}${RED}，请首先执行${YELLOW}setup${RED}命令。
+The config file ${TEAL}${conf}${RED} is not found. You need to run the ${YELLOW}setup${RED} command first.
   
-${RAW}用法:    ${cmd} setup"
+${RAW}Usage:    ${cmd} setup"
     exit 1
   fi
   . "${conf}"
@@ -191,14 +195,14 @@ getProfile() {
     echo '.bashrc'
   else
     # assume something else
-    echo "shell启动脚本"
+    echo "your shell's profile script"
   fi
 }
 
 # The `on` command's handler
 on() {
   loadConf
-  echo -e "正在配置代理服务器 ${YELLOW}${url}${RAW}"
+  echo -e "applying proxy settings to server ${YELLOW}${url}${RAW}"
   export http_proxy=${url}
   export https_proxy=${url}
   applyGit ${url}
@@ -212,49 +216,50 @@ applyGit() {
   git config --global https.proxy $1
   # For git:// protocol
   git config --global core.gitproxy ${socks}
-  echo "✔️️ git设置完毕"
+  echo "✔️️ git configs applied."
 }
 
 # Unset all proxy settings
 off() {
   unset http_proxy
   unset https_proxy
-  echo "👋🏻️ 已删除系统变量"
+  echo "👋🏻️ environment variables unset."
   git config --global --unset http.proxy
   git config --global --unset https.proxy
   git config --global --unset core.gitproxy
-  echo "👋🏻️ 已删除git配置"
+  echo "👋🏻️ git configs removed."
   colorEcho ${RED} "
-如果不再使用代理服务器，别忘了:
+IF PROXY IS NO LONGER NEEDED, DON'T FORGET TO:
 ${RAW}
-1.  删除或注释掉${YELLOW}$(getProfile)${RAW}中 wslproxy 相关的部分
-2.  删除或注释掉${YELLOW}~/.ssh/config${RAW}中的代理设置
+1.  Remove or comment out the wsl2proxy part in ${YELLOW}$(getProfile)${RAW}
+2.  Remove or comment out ssh proxies in ${YELLOW}~/.ssh/config${RAW}
 "
 }
 
 # Print the help info
 help() {
   echo -e "
-WSL代理服务器配置工具
+A WSL proxy setting util.
 
     - authored by Wizcas <chen@0x1c.dev>
 
-本工具自动检测WSL的Windows主机地址，并使用自定义的代理信息为
-HTTP，HTTPS和Git添加代理配置。
+This tool will detect the Windows host address and apply 
+proxy settings to HTTP, HTTPS & Git automatically.
 
 Usage:
   ${cmd} <COMMAND>
 
 Commands:
-  install  将脚本安装到 /usr/local/bin
-  setup    设置代理参数 (协议、端口等) ，并创建socks代理
-           转发脚本
-  on       开启代理设置，只有使用setup正常配置后才能生效。
-           执行方式：${TEAL}. ${cmd} on${RAW}
-  off      关闭代理设置。
-           执行方式：${TEAL}. ${cmd} off${RAW}
-  url      打印当前的代理服务器地址
-  help     显示本帮助信息
+  install  Installs the script to /usr/local/bin.
+  setup    Sets up proxy parameters (protocol, port, etc.) 
+           and create a helper socks proxy tool.
+  on       Enables proxy settings. Works only with a proper setup.
+           To execute in current env: ${TEAL}. ${cmd} on ${RAW}
+  off      Disables proxy settings.
+           To execute in current env: ${TEAL}. ${cmd} off ${RAW}
+  url      Prints the proxy server's URL.
+  help     Shows this help info.
+  version  Shows the script version.
 "
 }
 
@@ -262,7 +267,7 @@ Commands:
 install() {
   if [ "$EUID" -ne 0 ]; then
     colorEcho ${RED} "
-请使用root权限执行脚本，如：
+Please run this script as root user, i.e.
 
     ${RAW}sudo $0 install
 "
@@ -271,7 +276,7 @@ install() {
   exePath="/usr/local/bin/${cmd}"
   cp -f $(realpath $0) ${exePath}
   chmod +x ${exePath}
-  echo "✔️️ 安装完成。现在可以用如下命令配置代理:
+  echo "✔️️ Done. You can now sets up your proxy server by:
 
     ${cmd} setup
   "
@@ -294,6 +299,9 @@ on)
 url)
   loadConf
   echo ${url}
+  ;;
+version)
+  echo WSL2Proxy: ${VERSION}
   ;;
 *)
   help
