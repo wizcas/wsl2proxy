@@ -1,0 +1,304 @@
+#!/bin/bash
+
+##########################################
+# Copyrights 2020, Wizcas <chen@0x1c.dev>
+#
+# This script is under MIT license
+##########################################
+
+#----------- Utils -----------
+####### color code ########
+RED="\033[31m"     # Error message
+GREEN="\033[32m"   # Success message
+YELLOW="\033[33m"  # Warning message
+BLUE="\033[34m"    # Info message
+MAGENTA="\033[35m" # Info message
+TEAL="\033[36m"    # Info message
+RAW="\033[0m"
+
+colorEcho() {
+  echo -e "${1}${@:2}${RAW}" 1>&2
+}
+##########################
+
+# Constants
+conf="${HOME}/.wslproxy.conf"
+socks="${HOME}/socksproxy"
+varsfile="${HOME}/wslproxy.vars"
+cmd="wslproxy"
+
+# Extract the IP of Windows host, which is generated automatically
+host=$(cat /etc/resolv.conf | sed -n 's/^nameserver\W\(.*\)$/\1/p')
+
+# Let user select from options for proxy protocol
+selectProtocol() {
+  echo -e "\n${RED}[STEP 1]${BLUE} Proxy Protocol: ${RAW}\n---- OPTIONS ----"
+  PROTOCOLS=("http" "https" "socks5" "socks4")
+  PS3="-----------------
+Protocol > "
+  select protocol in ${PROTOCOLS[@]}; do
+    case $protocol in
+    "http" | "https")
+      NC_PROTOCOL="connect"
+      break
+      ;;
+    "socks5")
+      NC_PROTOCOL=5
+      break
+      ;;
+    "socks4")
+      NC_PROTOCOL=4
+      break
+      ;;
+    *)
+      colorEcho ${RED} "Please select a number from 1 to ${#PROTOCOLS[@]}."
+      ;;
+    esac
+  done
+}
+
+# Let user input the proxy server port
+inputPort() {
+  echo -e "\n${RED}[STEP 2]${BLUE} Proxy Port: ${RAW}"
+  while true; do
+    read -p "Port > " port
+    if [ -z ${port} ]; then
+      colorEcho ${RED} "You have to let me know the port.${RAW}"
+    else
+      if [[ ${port} =~ ^[1-9][0-9]+$ ]] && [[ ${port} -le 65535 ]]; then
+        break
+      else
+        colorEcho ${RED} "Invalid port number.${RAW}"
+      fi
+    fi
+  done
+}
+
+# Save configs into a conf file
+saveConf() {
+  echo "# This file is for storaging WSL proxy settings.
+# The host IP is not recorded since it changes every time on reboot.
+
+protocol=${protocol}
+port=${port}
+  " >${conf}
+
+  colorEcho ${GREEN} "
+Proxy settings have been saved to ${YELLOW}${conf}${GREEN}, please don't delete it.
+"
+}
+
+# Since SSH proxy depends on `nc` tool for forwarding,
+# this function checks the prerequisite
+checkNc() {
+  command -v nc >/dev/null
+  nc=$?
+  if [ $nc -ne 0 ]; then
+    colorEcho ${RED} "
+WARNING: command ${YELLOW}nc${RED} is not found, which is required for SSH proxy.
+Please install it manually."
+  fi
+}
+
+# Create a utility for calling nc to forward network traffics
+setupSocksProxy() {
+  updateSocksProxy
+
+  echo -e "\
+-------------
+${RED}[MANUAL OPERATION REQUIRED]${RAW}
+
+The proxy command file ${YELLOW}${socks}${RAW} is created.
+Now to make it into use for the SSH protocol:
+
+1) Edit or add the ${YELLOW}~/.ssh/config\e${RAW} file 
+   with settings like the following content:
+   (You may need to grant the writing permission first)
+${TEAL}
+Host github.com
+    User git
+    ProxyCommand ${socks} '%h %p'
+${RAW}
+2) Give ${YELLOW}~/.ssh/config${RAW} a strict permission for SSH security check
+${TEAL}
+chmod 400 ~/.ssh/config
+${RAW}
+-------------"
+}
+
+updateSocksProxy() {
+  # Makes the proxy command
+  echo "#!/bin/bash
+nc -x ${host}:${port} -X ${NC_PROTOCOL} \$*
+" >${socks}
+  chmod +x ${socks}
+}
+
+# The `setup` command's handler
+setup() {
+  selectProtocol
+  inputPort
+  echo -e "Your proxy server is: ${TEAL}${protocol}://${host}:${port}${RAW}"
+  echo
+  while true; do
+    read -p "Is it correct? (Y/n): " CONFIRMED
+    case $CONFIRMED in
+    "y" | "Y" | "")
+      break
+      ;;
+    "n" | "N")
+      colorEcho ${BLUE} "Bye."
+      exit 2
+      ;;
+    *)
+      colorEcho ${RED} "What?"
+      ;;
+    esac
+  done
+
+  saveConf
+  checkNc
+  setupSocksProxy
+
+  colorEcho ${RED} "<<< AUTO ENABLE >>>"
+  echo -e "${TEAL}Note: ${RAW}Proxy server settings will be applied to 
+${YELLOW}http_proxy, https_proxy${RAW} & ${YELLOW}.gitconfig${RAW}.
+
+To auto enable the proxy on WSL startup, add the following 
+line into ${YELLOW}$(getProfile)${RAW} (don't miss the leading '.'):
+
+    ${TEAL}.${cmd} on${RAW}
+"
+}
+
+# Load proxy settings from our config file. Throws an error message if not found.
+loadConf() {
+  if [ ! -f "${conf}" ]; then
+    colorEcho ${RED} "
+The config file ${TEAL}${conf}${RED} is not found. You need to run the ${YELLOW}setup${RED} command first.
+  
+${RAW}Usage:    ${cmd} setup"
+    exit 1
+  fi
+  . "${conf}"
+  url="${protocol}://${host}:${port}"
+}
+
+# Determine what's the shell's profile script
+getProfile() {
+  if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
+    # assume Zsh
+    echo '.zshrc'
+  elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
+    # assume Bash
+    echo '.bashrc'
+  else
+    # assume something else
+    echo "your shell's profile script"
+  fi
+}
+
+# The `on` command's handler
+on() {
+  loadConf
+  echo -e "applying proxy settings to server ${YELLOW}${url}${RAW}"
+  export http_proxy=${url}
+  export https_proxy=${url}
+  applyGit ${url}
+  updateSocksProxy
+}
+
+# Set the proxy settings for git
+applyGit() {
+  # For HTTP/HTTPS protocol
+  git config --global http.proxy $1
+  git config --global https.proxy $1
+  # For git:// protocol
+  git config --global core.gitproxy ${socks}
+  echo "✔️️ git configs applied."
+}
+
+# Unset all proxy settings
+off() {
+  unset http_proxy
+  unset https_proxy
+  echo "👋🏻️ environment variables unset."
+  git config --global --unset http.proxy
+  git config --global --unset https.proxy
+  git config --global --unset core.gitproxy
+  echo "👋🏻️ git configs removed."
+  colorEcho ${RED} "
+IF PROXY IS NO LONGER NEEDED, DON'T FORGET TO:
+${RAW}
+1.  Remove or comment out the wslproxy part in ${YELLOW}$(getProfile)${RAW}
+2.  Remove or comment out ssh proxies in ${YELLOW}~/.ssh/config${RAW}
+"
+}
+
+# Print the help info
+help() {
+  echo -e "
+A WSL proxy setting util.
+
+    - authored by Wizcas <chen@0x1c.dev>
+
+This tool will detect the Windows host address and apply 
+proxy settings to HTTP, HTTPS & Git automatically.
+
+Usage:
+  ${cmd} <COMMAND>
+
+Commands:
+  install  Installs the script to /usr/local/bin
+  setup    Sets up proxy parameters (protocol, port, etc.) 
+           and create a helper socks proxy tool
+  on       Enables proxy settings. Works only with a proper setup.
+           To execute in current env: ${TEAL}. ${cmd} on ${RAW}
+  off      Disables proxy settings.
+           To execute in current env: ${TEAL}. ${cmd} off ${RAW}
+  url      Prints the proxy server's URL
+  help     Shows this help info.
+"
+}
+
+# installs the script to /usr/local/bin
+install() {
+  if [ "$EUID" -ne 0 ]; then
+    colorEcho ${RED} "
+Please run this script as root user, i.e.
+
+    ${RAW}sudo $0 install
+"
+    exit 1
+  fi
+  exePath="/usr/local/bin/${cmd}"
+  cp -f $(realpath $0) ${exePath}
+  chmod +x ${exePath}
+  echo "✔️️ Done. You can now sets up your proxy server by:
+
+    ${cmd} setup
+  "
+}
+
+# Main entry of the bash script
+case $1 in
+install)
+  install
+  ;;
+setup)
+  setup
+  ;;
+off)
+  off
+  ;;
+on)
+  on
+  ;;
+url)
+  loadConf
+  echo ${url}
+  ;;
+*)
+  help
+  ;;
+esac
