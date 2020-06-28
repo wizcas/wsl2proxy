@@ -40,15 +40,15 @@ Protocol > "
   select protocol in ${PROTOCOLS[@]}; do
     case $protocol in
     "http" | "https")
-      NC_PROTOCOL="connect"
+      ncProtocol="connect"
       break
       ;;
     "socks5")
-      NC_PROTOCOL=5
+      ncProtocol=5
       break
       ;;
     "socks4")
-      NC_PROTOCOL=4
+      ncProtocol=4
       break
       ;;
     *)
@@ -81,6 +81,7 @@ saveConf() {
 # The host IP is not recorded since it changes every time on reboot.
 
 protocol=${protocol}
+ncProtocol=${ncProtocol}
 port=${port}
   " >${conf}
 
@@ -127,7 +128,7 @@ ${RAW}
 updateSocksProxy() {
   # Makes the proxy command
   echo "#!/bin/bash
-nc -x ${host}:${port} -X ${NC_PROTOCOL} \$*
+nc -x ${host}:${port} -X ${ncProtocol} \$*
 " >${socks}
   chmod +x ${socks}
 }
